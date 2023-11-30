@@ -11,11 +11,12 @@
 # type:ignore
 from enum import Enum, auto
 from itertools import product
-from typing import Mapping, Optional, Sequence
+from typing import Any, Mapping, Optional, Sequence, List
 
 import numpy as np
 from braket.aws import AwsDevice
 from openfermion.ops import FermionOperator, InteractionOperator
+from quri_parts.core.operator import Operator
 from openfermion.transforms import get_fermion_operator
 from pyscf import ao2mo
 from qiskit import IBMQ
@@ -200,6 +201,104 @@ def _get_active_hamiltonian(h1, h2, norb, ecore):
     )
     return active_hamiltonian
 
+def in_partition(sites: tuple, rank: int, npartitions: int) -> bool:
+    """
+    Determine whether a given set of 'sites' belongs to a specific rank or not.
+    This Python implementation is borrowled from ITensorChemistry.jl package
+    https://github.com/ITensor/ITensorParallel.jl/blob/main/src/partition/partition_sum_split.jl
+
+    Args:
+        sites (tuple): A tuple representing the sites to be checked.
+        rank (int): The rank or index of the partition being considered.
+        npartitions (int): The total number of partitions.
+
+    Returns:
+        bool: True if the 'sites' belong to the specified partition, False otherwise.
+
+    Raises:
+        ValueError: If the input 'npartitions' is not a positive integer.
+        ValueError: If the input 'sites' are not in a valid format.
+
+    Note:
+        The function checks the 'sites' tuple based on its length:
+        - If len(sites) == 0, it handles the case of a constant term.
+        - If len(sites) == 2, it checks the sites for a pair of factors.
+        - If len(sites) == 4, it checks the sites for a quadruplet of factors.
+
+        The criteria for partitioning are applied according to the OpenFermion library's conventions.
+
+    Example:
+        To check if a pair of factors ((0, 1), (2, 0)) belongs to partition 1 out of 3:
+        >>> rank = 1
+        >>> npartitions = 3
+        >>> is_in_partition = in_partition(((0, 1), (2, 0)), rank, npartitions)
+    """
+    if npartitions < 1:
+        raise ValueError("npartitions must be a positive integer")
+    if len(sites) == 0:
+        # constant term
+        return rank % npartitions == 0
+    if len(sites) == 2:
+        if isinstance(sites[0], int):
+            # https://github.com/quantumlib/OpenFermion/blob/85e533edb234fdccc3433b03c9b3d723f9a2a88c/src/openfermion/ops/operators/symbolic_operator.py#L231-L232
+            # `sites` should be a single factor e.g., (0, 0)
+            (i, _) = sites
+            return rank == i % npartitions
+        else:
+            # `sites` should be a pair of factors e.g., ((0, 0), (3, 1))
+            (i, _), (j, _) = sites
+            # Make sure `i ≥ j`
+            if j > i:
+                i, j = j, i
+            assert i >= j
+            return rank == ((i - 1) * i // 2 + j) % npartitions
+    if len(sites) == 4:
+        # `sites` should be a quadruplet of factors e.g., ((0, 1), (0, 1), (2, 0), (2, 0))
+        (i, _), (j, _), (k, _), (l, _) = sites
+        i, j, k, l = sorted((i, j, k, l))
+        assert i <= j <= k <= l
+        dummy = 0
+        if j == k:
+            sites = (j, dummy)
+            return in_partition(sites, rank, npartitions)
+        else:
+            sites = ((i, dummy), (j, dummy))
+            return in_partition(sites, rank, npartitions)
+    raise ValueError(f"Invalid input {sites=}")
+
+
+def partition(h: FermionOperator, npartitions: int) -> List[FermionOperator]:
+    """
+    Partition a FermionOperator into multiple FermionOperators based on a specified criteria
+    proposed by Zhai and Chan in https://arxiv.org/abs/2103.09976.
+
+    Args:
+        h (FermionOperator): The input FermionOperator to be partitioned.
+        npartitions (int): The number of partitions to create.
+
+    Returns:
+        List[FermionOperator]: A list of FermionOperator objects, where each object
+            represents a partition of the input FermionOperator.
+
+    Note:
+        The partitioning is performed based on the `in_partition` function, which is expected
+        to determine whether a term in the input FermionOperator belongs to a specific partition
+        or not. The terms are divided among the partitions, and each partition is represented by
+        a FermionOperator object in the returned list.
+
+    Example:
+        To partition a FermionOperator `h` into 3 partitions:
+        >>> partitions = partition(h, 3)
+    """
+    fermion_operators: List[FermionOperator] = [
+        FermionOperator() for _ in range(npartitions)
+    ]
+    for rank in range(npartitions):
+        for sites in h.terms.keys():
+            if in_partition(sites, rank, npartitions):
+                c = h.terms[sites]
+                fermion_operators[rank] += FermionOperator(sites, c)
+    return fermion_operators
 
 def _create_concurrent_estimators(
     backend: Backend, shots_per_iter: int

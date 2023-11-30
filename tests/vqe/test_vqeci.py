@@ -12,7 +12,7 @@ from typing import Any
 
 import numpy as np
 import pytest
-from openfermion import InteractionOperator, MolecularData
+from openfermion import InteractionOperator, MolecularData, FermionOperator
 from openfermionpyscf import run_pyscf
 from pyscf import gto
 from quri_parts.algo.ansatz import HardwareEfficient, SymmetryPreserving
@@ -35,6 +35,8 @@ from chemqulacs.vqe.vqeci import (
     Ansatz,
     _create_ansatz,
     _get_active_hamiltonian,
+    in_partition,
+    partition,
 )
 
 
@@ -391,6 +393,301 @@ def test_make_dm2():
         ]
     )
     assert np.allclose(dm2, expected)
+
+def test_in_partition_zero_sites():
+    sites = ()
+    npartitions = 3
+    rank = 0
+    assert in_partition(sites, rank, npartitions) is True
+    rank = 1
+    assert in_partition(sites, 1, npartitions) is False
+    rank = 2
+    assert in_partition(sites, 2, npartitions) is False
+
+
+def test_in_partition_two_sites():
+    sites = (2, 1)
+    npartitions = 3
+    rank = 0
+    assert in_partition(sites, rank, npartitions) is False
+    rank = 1
+    assert in_partition(sites, rank, npartitions) is False
+    rank = 2
+    assert in_partition(sites, rank, npartitions) is True
+
+
+def test_in_partition_four_sites():
+    sites = ((2, 1), (2, 1), (2, 0), (2, 0))
+    npartitions = 3
+    # test case len(sites) == 4 and j == k
+    rank = 0
+    assert in_partition(sites, rank, npartitions) == in_partition(
+        (2, 1), rank, npartitions
+    )
+    rank = 1
+    assert in_partition(sites, rank, npartitions) == in_partition(
+        (2, 1), rank, npartitions
+    )
+    rank = 2
+    assert in_partition(sites, rank, npartitions) == in_partition(
+        (2, 1), rank, npartitions
+    )
+
+
+def test_in_partition_len_sites_2():
+    sites = ((0, 1), (1, 0))
+    npartitions = 3
+    rank = 0
+    assert in_partition(sites, rank, npartitions) is True
+    rank = 1
+    assert in_partition(sites, rank, npartitions) is False
+    rank = 2
+    assert in_partition(sites, rank, npartitions) is False
+
+
+def test_in_partition_len_sites_4():
+    sites = ((0, 1), (1, 0), (2, 3), (3, 2))
+    npartitions = 3
+    # test case len(sites) == 4 and j != k
+    rank = 0
+    assert in_partition(sites, rank, npartitions) == in_partition(
+        ((0, 1), (1, 0)), rank, npartitions
+    )
+    rank = 1
+    assert in_partition(sites, rank, npartitions) == in_partition(
+        ((0, 1), (1, 0)), rank, npartitions
+    )
+    rank = 2
+    assert in_partition(sites, rank, npartitions) == in_partition(
+        ((0, 1), (1, 0)), rank, npartitions
+    )
+
+
+def test_in_partition_value_error():
+    sites = ((0, 1), (1, 0))
+    rank = 2
+    npartitions = 0
+    with pytest.raises(ValueError):
+        in_partition(sites, rank, npartitions)
+    npartitions = -1
+    with pytest.raises(ValueError):
+        in_partition(sites, rank, npartitions)
+
+
+def test_in_partition_invalid_sites_format():
+    invalid_sites_format = (0, 1, 2)
+    rank = 0
+    npartitions = 1
+    with pytest.raises(ValueError):
+        in_partition(invalid_sites_format, rank, npartitions)
+
+def test_partition_empty_fermion_operator():
+    h = FermionOperator()
+    npartitions = 3
+    partitions = partition(h, npartitions)
+    assert len(partitions) == npartitions
+    for p in partitions:
+        assert p == FermionOperator()
+
+
+def test_partition_multiple_terms_fermion_operator():
+    """
+    from pyscf import gto, scf
+    from chemqulacs.vqe.vqeci import Ansatz
+    from chemqulacs.vqe import vqemcscf
+    from chemqulacs.vqe.vqeci import QulacsBackend
+    from quri_parts.algo.optimizer import Adam
+
+    mol = gto.M(atom="H 0 0 0; H 0 0 0.75", basis="sto3g")
+    mf = scf.RHF(mol)
+    mf.run()
+    mc_vqe = vqemcscf.VQECASCI(
+        mf,
+        ncas=2,
+        nelecas=2,
+        optimizer=Adam(ftol=1e-3),
+        backend=QulacsBackend(),
+        ansatz=Ansatz.HardwareEfficient,
+        layers=4,
+        is_init_random=True,
+        seed=10
+    )
+    mc_vqe.run()
+    h = mc_vqe.fcisolver.fermionic_hamiltonian
+    terms = h.terms
+    """
+    terms = {
+        (): 0.70556961456,
+        ((0, 1), (0, 0)): -1.2472845052236154,
+        ((1, 1), (1, 0)): -1.2472845052236154,
+        ((2, 1), (2, 0)): -0.4812729310959834,
+        ((3, 1), (3, 0)): -0.4812729310959834,
+        ((0, 1), (0, 1), (0, 0), (0, 0)): 0.33642397347431446,
+        ((0, 1), (0, 1), (2, 0), (2, 0)): 0.09088576828865243,
+        ((0, 1), (1, 1), (1, 0), (0, 0)): 0.33642397347431446,
+        ((0, 1), (1, 1), (3, 0), (2, 0)): 0.09088576828865243,
+        ((0, 1), (2, 1), (0, 0), (2, 0)): 0.09088576828865243,
+        ((0, 1), (2, 1), (2, 0), (0, 0)): 0.33098862973957305,
+        ((0, 1), (3, 1), (1, 0), (2, 0)): 0.09088576828865243,
+        ((0, 1), (3, 1), (3, 0), (0, 0)): 0.33098862973957305,
+        ((1, 1), (0, 1), (0, 0), (1, 0)): 0.33642397347431446,
+        ((1, 1), (0, 1), (2, 0), (3, 0)): 0.09088576828865243,
+        ((1, 1), (1, 1), (1, 0), (1, 0)): 0.33642397347431446,
+        ((1, 1), (1, 1), (3, 0), (3, 0)): 0.09088576828865243,
+        ((1, 1), (2, 1), (0, 0), (3, 0)): 0.09088576828865243,
+        ((1, 1), (2, 1), (2, 0), (1, 0)): 0.33098862973957305,
+        ((1, 1), (3, 1), (1, 0), (3, 0)): 0.09088576828865243,
+        ((1, 1), (3, 1), (3, 0), (1, 0)): 0.33098862973957305,
+        ((2, 1), (0, 1), (0, 0), (2, 0)): 0.330988629739573,
+        ((2, 1), (0, 1), (2, 0), (0, 0)): 0.09088576828865243,
+        ((2, 1), (1, 1), (1, 0), (2, 0)): 0.330988629739573,
+        ((2, 1), (1, 1), (3, 0), (0, 0)): 0.09088576828865243,
+        ((2, 1), (2, 1), (0, 0), (0, 0)): 0.09088576828865243,
+        ((2, 1), (2, 1), (2, 0), (2, 0)): 0.34790757552988233,
+        ((2, 1), (3, 1), (1, 0), (0, 0)): 0.09088576828865243,
+        ((2, 1), (3, 1), (3, 0), (2, 0)): 0.34790757552988233,
+        ((3, 1), (0, 1), (0, 0), (3, 0)): 0.330988629739573,
+        ((3, 1), (0, 1), (2, 0), (1, 0)): 0.09088576828865243,
+        ((3, 1), (1, 1), (1, 0), (3, 0)): 0.330988629739573,
+        ((3, 1), (1, 1), (3, 0), (1, 0)): 0.09088576828865243,
+        ((3, 1), (2, 1), (0, 0), (1, 0)): 0.09088576828865243,
+        ((3, 1), (2, 1), (2, 0), (3, 0)): 0.34790757552988233,
+        ((3, 1), (3, 1), (1, 0), (1, 0)): 0.09088576828865243,
+        ((3, 1), (3, 1), (3, 0), (3, 0)): 0.34790757552988233,
+    }
+
+    h = FermionOperator()
+    for f, c in terms.items():
+        h += FermionOperator(f, c)
+    npartitions = 1
+    partitions = partition(h, npartitions)
+    assert partitions[0] == h
+    assert sum(partitions) == h
+
+def test_partition_npartitions_4():
+    """
+    from pyscf import gto, scf
+    from chemqulacs.vqe.vqeci import Ansatz
+    from chemqulacs.vqe import vqemcscf
+    from chemqulacs.vqe.vqeci import QulacsBackend
+    from quri_parts.algo.optimizer import Adam
+
+    mol = gto.M(atom="H 0 0 0; H 0 0 0.75", basis="sto3g")
+    mf = scf.RHF(mol)
+    mf.run()
+    mc_vqe = vqemcscf.VQECASCI(
+        mf,
+        ncas=2,
+        nelecas=2,
+        optimizer=Adam(ftol=1e-3),
+        backend=QulacsBackend(),
+        ansatz=Ansatz.HardwareEfficient,
+        layers=4,
+        is_init_random=True,
+        seed=10
+    )
+    mc_vqe.run()
+    h = mc_vqe.fcisolver.fermionic_hamiltonian
+    terms = h.terms
+    """
+    terms = {
+        (): 0.70556961456,
+        ((0, 1), (0, 0)): -1.2472845052236154,
+        ((1, 1), (1, 0)): -1.2472845052236154,
+        ((2, 1), (2, 0)): -0.4812729310959834,
+        ((3, 1), (3, 0)): -0.4812729310959834,
+        ((0, 1), (0, 1), (0, 0), (0, 0)): 0.33642397347431446,
+        ((0, 1), (0, 1), (2, 0), (2, 0)): 0.09088576828865243,
+        ((0, 1), (1, 1), (1, 0), (0, 0)): 0.33642397347431446,
+        ((0, 1), (1, 1), (3, 0), (2, 0)): 0.09088576828865243,
+        ((0, 1), (2, 1), (0, 0), (2, 0)): 0.09088576828865243,
+        ((0, 1), (2, 1), (2, 0), (0, 0)): 0.33098862973957305,
+        ((0, 1), (3, 1), (1, 0), (2, 0)): 0.09088576828865243,
+        ((0, 1), (3, 1), (3, 0), (0, 0)): 0.33098862973957305,
+        ((1, 1), (0, 1), (0, 0), (1, 0)): 0.33642397347431446,
+        ((1, 1), (0, 1), (2, 0), (3, 0)): 0.09088576828865243,
+        ((1, 1), (1, 1), (1, 0), (1, 0)): 0.33642397347431446,
+        ((1, 1), (1, 1), (3, 0), (3, 0)): 0.09088576828865243,
+        ((1, 1), (2, 1), (0, 0), (3, 0)): 0.09088576828865243,
+        ((1, 1), (2, 1), (2, 0), (1, 0)): 0.33098862973957305,
+        ((1, 1), (3, 1), (1, 0), (3, 0)): 0.09088576828865243,
+        ((1, 1), (3, 1), (3, 0), (1, 0)): 0.33098862973957305,
+        ((2, 1), (0, 1), (0, 0), (2, 0)): 0.330988629739573,
+        ((2, 1), (0, 1), (2, 0), (0, 0)): 0.09088576828865243,
+        ((2, 1), (1, 1), (1, 0), (2, 0)): 0.330988629739573,
+        ((2, 1), (1, 1), (3, 0), (0, 0)): 0.09088576828865243,
+        ((2, 1), (2, 1), (0, 0), (0, 0)): 0.09088576828865243,
+        ((2, 1), (2, 1), (2, 0), (2, 0)): 0.34790757552988233,
+        ((2, 1), (3, 1), (1, 0), (0, 0)): 0.09088576828865243,
+        ((2, 1), (3, 1), (3, 0), (2, 0)): 0.34790757552988233,
+        ((3, 1), (0, 1), (0, 0), (3, 0)): 0.330988629739573,
+        ((3, 1), (0, 1), (2, 0), (1, 0)): 0.09088576828865243,
+        ((3, 1), (1, 1), (1, 0), (3, 0)): 0.330988629739573,
+        ((3, 1), (1, 1), (3, 0), (1, 0)): 0.09088576828865243,
+        ((3, 1), (2, 1), (0, 0), (1, 0)): 0.09088576828865243,
+        ((3, 1), (2, 1), (2, 0), (3, 0)): 0.34790757552988233,
+        ((3, 1), (3, 1), (1, 0), (1, 0)): 0.09088576828865243,
+        ((3, 1), (3, 1), (3, 0), (3, 0)): 0.34790757552988233,
+    }
+
+    h = FermionOperator()
+    for f, c in terms.items():
+        h += FermionOperator(f, c)
+    npartitions = 4
+    partitions = partition(h, npartitions)
+    assert len(partitions) == npartitions
+    h0 = partitions[0]
+    h1 = partitions[1]
+    h2 = partitions[2]
+    h3 = partitions[3]
+    assert h0.terms == {
+        (): 0.70556961456,
+        ((0, 1), (0, 0)): -1.2472845052236154,
+        ((0, 1), (0, 1), (0, 0), (0, 0)): 0.33642397347431446,
+        ((0, 1), (0, 1), (2, 0), (2, 0)): 0.09088576828865243,
+        ((0, 1), (1, 1), (1, 0), (0, 0)): 0.33642397347431446,
+        ((0, 1), (1, 1), (3, 0), (2, 0)): 0.09088576828865243,
+        ((0, 1), (2, 1), (0, 0), (2, 0)): 0.09088576828865243,
+        ((0, 1), (2, 1), (2, 0), (0, 0)): 0.33098862973957305,
+        ((0, 1), (3, 1), (1, 0), (2, 0)): 0.09088576828865243,
+        ((0, 1), (3, 1), (3, 0), (0, 0)): 0.33098862973957305,
+        ((1, 1), (0, 1), (0, 0), (1, 0)): 0.33642397347431446,
+        ((1, 1), (0, 1), (2, 0), (3, 0)): 0.09088576828865243,
+        ((1, 1), (2, 1), (0, 0), (3, 0)): 0.09088576828865243,
+        ((2, 1), (0, 1), (0, 0), (2, 0)): 0.330988629739573,
+        ((2, 1), (0, 1), (2, 0), (0, 0)): 0.09088576828865243,
+        ((2, 1), (1, 1), (3, 0), (0, 0)): 0.09088576828865243,
+        ((2, 1), (2, 1), (0, 0), (0, 0)): 0.09088576828865243,
+        ((2, 1), (3, 1), (1, 0), (0, 0)): 0.09088576828865243,
+        ((3, 1), (0, 1), (0, 0), (3, 0)): 0.330988629739573,
+        ((3, 1), (0, 1), (2, 0), (1, 0)): 0.09088576828865243,
+        ((3, 1), (2, 1), (0, 0), (1, 0)): 0.09088576828865243,
+    }
+    assert h1.terms == {
+        ((1, 1), (1, 0)): -1.2472845052236154,
+        ((1, 1), (1, 1), (1, 0), (1, 0)): 0.33642397347431446,
+        ((1, 1), (1, 1), (3, 0), (3, 0)): 0.09088576828865243,
+        ((1, 1), (2, 1), (2, 0), (1, 0)): 0.33098862973957305,
+        ((1, 1), (3, 1), (1, 0), (3, 0)): 0.09088576828865243,
+        ((1, 1), (3, 1), (3, 0), (1, 0)): 0.33098862973957305,
+        ((2, 1), (1, 1), (1, 0), (2, 0)): 0.330988629739573,
+        ((3, 1), (1, 1), (1, 0), (3, 0)): 0.330988629739573,
+        ((3, 1), (1, 1), (3, 0), (1, 0)): 0.09088576828865243,
+        ((3, 1), (3, 1), (1, 0), (1, 0)): 0.09088576828865243,
+    }
+    assert h2.terms == {
+        ((3, 1), (3, 0)): -0.4812729310959834,
+        ((2, 1), (2, 1), (2, 0), (2, 0)): 0.34790757552988233,
+    }
+    assert h3.terms == {
+        ((2, 1), (2, 0)): -0.4812729310959834,
+        ((2, 1), (3, 1), (3, 0), (2, 0)): 0.34790757552988233,
+        ((3, 1), (2, 1), (2, 0), (3, 0)): 0.34790757552988233,
+        ((3, 1), (3, 1), (3, 0), (3, 0)): 0.34790757552988233,
+    }
+
+    assert sum(partitions) == h
+
 
 
 class TestCreateAnsatz:
