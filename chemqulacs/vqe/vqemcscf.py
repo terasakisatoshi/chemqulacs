@@ -8,11 +8,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Optional
 from pyscf.mcscf import casci, mc1step
 from quri_parts.algo.optimizer import Adam
 from quri_parts.openfermion.transforms import jordan_wigner
 
-from chemqulacs.vqe.vqeci import VQECI, Ansatz, Backend, QulacsBackend
+from chemqulacs.vqe.vqeci import VQECI, ParallelVQECI
+from chemqulacs.vqe.vqeci import Ansatz, Backend, QulacsBackend
 
 
 class VQECASCI(casci.CASCI):
@@ -74,25 +76,46 @@ class VQECASCI(casci.CASCI):
         singlet_excitation: bool = False,
         is_init_random: bool = False,
         seed: int = 0,
+        npartitions: Optional[int] = None,
     ):
         casci.CASCI.__init__(self, mf, ncas, nelecas, ncore)
-        self.fcisolver = VQECI(
-            mf.mol,
-            fermion_qubit_mapping=fermion_qubit_mapping,
-            optimizer=optimizer,
-            backend=backend,
-            shots_per_iter=shots_per_iter,
-            ansatz=ansatz,
-            layers=layers,
-            k=k,
-            trotter_number=trotter_number,
-            include_pi=include_pi,
-            use_singles=use_singles,
-            delta_sz=delta_sz,
-            singlet_excitation=singlet_excitation,
-            is_init_random=is_init_random,
-            seed=seed,
-        )
+        if npartitions is None:
+            self.fcisolver = VQECI(
+                mf.mol,
+                fermion_qubit_mapping=fermion_qubit_mapping,
+                optimizer=optimizer,
+                backend=backend,
+                shots_per_iter=shots_per_iter,
+                ansatz=ansatz,
+                layers=layers,
+                k=k,
+                trotter_number=trotter_number,
+                include_pi=include_pi,
+                use_singles=use_singles,
+                delta_sz=delta_sz,
+                singlet_excitation=singlet_excitation,
+                is_init_random=is_init_random,
+                seed=seed,
+            )
+        else:
+            self.fcisolver = ParallelVQECI(
+                mf.mol,
+                fermion_qubit_mapping=fermion_qubit_mapping,
+                optimizer=optimizer,
+                backend=backend,
+                shots_per_iter=shots_per_iter,
+                ansatz=ansatz,
+                layers=layers,
+                k=k,
+                trotter_number=trotter_number,
+                include_pi=include_pi,
+                use_singles=use_singles,
+                delta_sz=delta_sz,
+                singlet_excitation=singlet_excitation,
+                is_init_random=is_init_random,
+                seed=seed,
+                npartitions=npartitions,
+            )
 
 
 class VQECASSCF(mc1step.CASSCF):
@@ -155,22 +178,43 @@ class VQECASSCF(mc1step.CASSCF):
         singlet_excitation: bool = False,
         is_init_random: bool = False,
         seed: int = 0,
+        npartitions: Optional[int] = None,
     ):
         mc1step.CASSCF.__init__(self, mf, ncas, nelecas, ncore, nfrozen)
-        self.fcisolver = VQECI(
-            mf.mol,
-            fermion_qubit_mapping=fermion_qubit_mapping,
-            optimizer=optimizer,
-            backend=backend,
-            shots_per_iter=shots_per_iter,
-            ansatz=ansatz,
-            layers=layers,
-            k=k,
-            trotter_number=trotter_number,
-            include_pi=include_pi,
-            use_singles=use_singles,
-            delta_sz=delta_sz,
-            singlet_excitation=singlet_excitation,
-            is_init_random=is_init_random,
-            seed=seed,
+        if npartitions is None:
+            self.fcisolver = VQECI(
+                mf.mol,
+                fermion_qubit_mapping=fermion_qubit_mapping,
+                optimizer=optimizer,
+                backend=backend,
+                shots_per_iter=shots_per_iter,
+                ansatz=ansatz,
+                layers=layers,
+                k=k,
+                trotter_number=trotter_number,
+                include_pi=include_pi,
+                use_singles=use_singles,
+                delta_sz=delta_sz,
+                singlet_excitation=singlet_excitation,
+                is_init_random=is_init_random,
+                seed=seed,
         )
+        else:
+            self.fcisolver = ParallelVQECI(
+                mf.mol,
+                fermion_qubit_mapping=fermion_qubit_mapping,
+                optimizer=optimizer,
+                backend=backend,
+                shots_per_iter=shots_per_iter,
+                ansatz=ansatz,
+                layers=layers,
+                k=k,
+                trotter_number=trotter_number,
+                include_pi=include_pi,
+                use_singles=use_singles,
+                delta_sz=delta_sz,
+                singlet_excitation=singlet_excitation,
+                is_init_random=is_init_random,
+                seed=seed,
+                npartitions=npartitions,
+            )
