@@ -23,14 +23,13 @@ def main(npartitions=1):
         ncas=3,
         nelecas=4,
         optimizer=Adam(ftol=1e-3),
-        backend=ITensorBackend(),
+        backend=ITensorBackend(), # ここを QulacsBackend に変更しても良い
         ansatz=Ansatz.HardwareEfficient,
         layers=4,
         is_init_random=False,
         seed=10,
         npartitions=npartitions,
     )
-
 
     t1 = time.time()
     print(mc_vqe.run())
