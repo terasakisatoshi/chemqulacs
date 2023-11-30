@@ -9,6 +9,10 @@
 # limitations under the License.
 
 # type:ignore
+
+import importlib
+import concurrent.futures
+from multiprocessing import get_context
 from enum import Enum, auto
 from itertools import product
 from typing import Any, Mapping, Optional, Sequence, List
@@ -17,6 +21,7 @@ import numpy as np
 from braket.aws import AwsDevice
 from openfermion.ops import FermionOperator, InteractionOperator
 from quri_parts.core.operator import Operator
+from quri_parts.core.utils.concurrent import execute_concurrently
 from openfermion.transforms import get_fermion_operator
 from pyscf import ao2mo
 from qiskit import IBMQ
@@ -64,7 +69,6 @@ from quri_parts.qulacs.estimator import (
 
 from chemqulacs.vqe.rdm import get_1rdm, get_2rdm
 
-
 class Backend:
     """Base class represents backend"""
 
@@ -81,6 +85,7 @@ class ITensorBackend(Backend):
     """Backend class for ITensor"""
 
     pass
+
 
 
 class AWSBackend(Backend):
@@ -481,6 +486,7 @@ class VQECI(object):
         self.n_orbitals: int = None
         self.ansatz: Ansatz = ansatz
         self.optimizer = optimizer
+        self.backend: Backend = backend
         self.n_electron: int = None
         self.layers: int = layers
         self.k: int = k
@@ -494,7 +500,7 @@ class VQECI(object):
         self.e = 0
 
         self.estimator, self.parametric_estimator = _create_concurrent_estimators(
-            backend, shots_per_iter
+            self.backend, shots_per_iter
         )
 
     # =======================================================================================
@@ -683,3 +689,148 @@ class VQECI(object):
                 + self._dm2_elem(ib, jb, ka, la, self.opt_state, norb, nelec)
             )
         return dm2
+
+def _sequential_cost_fn(estimator_s_tuple, hs):
+    estimator, s = estimator_s_tuple
+    return [estimator(h, s) for h in hs]
+
+class ParallelVQECI(VQECI):
+    def __init__(self, *args: Any, npartitions:int=1, **kwds: Any) -> None:
+        super().__init__(*args, **kwds)
+        self.npartitions: int = npartitions
+    def __call__(self, *args: Any, **kwds: Any) -> Any:
+        return super().__call__(*args, **kwds)
+
+    def get_estimator(self):
+        if isinstance(self.backend, QulacsBackend):
+            from quri_parts.qulacs.estimator import create_qulacs_vector_estimator
+            estimator = create_qulacs_vector_estimator()
+        if isinstance(self.backend, ITensorBackend):
+            """
+            from quri_parts.itensor.estimator import create_itensor_mps_estimator
+            from quri_parts.itensor.load_itensor import ensure_itensor_loaded
+            ensure_itensor_loaded()
+            create_itensor_mps_estimator() # alters ensure_itensor_loaded()
+            from juliacall import Main as jl
+            jl.siteinds("Qubit", 3)
+            """
+            estimator = importlib.import_module("quri_parts.itensor.estimator")._estimate
+        return estimator
+
+    def kernel(self, h1, h2, norb, nelec, ecore=0, **kwargs):
+        self.n_orbitals = norb
+        self.n_qubit = self.fermion_qubit_mapping.n_qubits_required(2 * self.n_orbitals)
+        self.n_electron = nelec[0] + nelec[1]
+
+        # Get the active space Hamiltonian
+        active_hamiltonian = _get_active_hamiltonian(h1, h2, norb, ecore)
+        # Convert the Hamiltonian using `self.fermion_qubit_mapping`
+        self.fermionic_hamiltonian = get_fermion_operator(active_hamiltonian)
+        op_mapper = self.fermion_qubit_mapping.get_of_operator_mapper(
+            n_spin_orbitals=2 * self.n_orbitals,
+            n_fermions=self.n_electron,
+        )
+
+        qubit_hamiltonians: List[Operator] = []
+
+        for f_h in partition(self.fermionic_hamiltonian, npartitions=self.npartitions):
+            if f_h.terms:
+                qubit_hamiltonians.append(op_mapper(f_h))
+            else:
+                continue
+
+        # Set initial Quantum State
+        occ_indices = list(range(self.n_electron))
+        state_mapper = self.fermion_qubit_mapping.get_state_mapper(
+            2 * self.n_orbitals, self.n_electron
+        )
+        self.initial_state = state_mapper(occ_indices)
+
+        # Set given ansatz
+        ansatz = _create_ansatz(
+            self.ansatz,
+            self.fermion_qubit_mapping,
+            2 * self.n_orbitals,
+            self.n_electron,
+            self.layers,
+            self.k,
+            self.trotter_number,
+            self.include_pi,
+            self.use_singles,
+            self.delta_sz,
+            self.singlet_excitation,
+        )
+        # Create parametric state
+        param_circuit = LinearMappedUnboundParametricQuantumCircuit(self.n_qubit)
+        param_circuit.extend(self.initial_state.circuit)
+        param_circuit.extend(ansatz)
+        param_state = ParametricCircuitQuantumState(self.n_qubit, param_circuit)
+
+        gradient_estimator = create_parameter_shift_gradient_estimator(
+            self.parametric_estimator
+        )
+        from quri_parts.qulacs.estimator import create_qulacs_vector_parametric_estimator
+        self.parametric_estimator = create_qulacs_vector_parametric_estimator()
+
+
+        def cost_fn(params):
+            estimator = self.get_estimator()
+            s = param_state.bind_parameters(params)
+            with concurrent.futures.ProcessPoolExecutor(mp_context=get_context("spawn")) as executor:
+                # Start the load operations and mark each future with its URL
+                result = execute_concurrently(
+                    _sequential_cost_fn,
+                    common_input=(estimator, s),
+                    individual_inputs=qubit_hamiltonians,
+                    executor=executor,
+                    concurrency=1,
+                )
+            r = sum(r.value.real for r in result)
+            return r
+
+        """
+        def grad_fn(params):
+            with concurrent.futures.ProcessPoolExecutor(mp_context=get_context("spawn")) as executor:
+                # Start the load operations and mark each future with its URL
+                result = execute_concurrently(
+                    gradient_estimator,
+                    common_input=(param_state, params),
+                    individual_inputs=qubit_hamiltonians,
+                    executor=executor,
+                )
+            gs = np.sum([g.real for g in r.values] for r in result)
+            return gs
+        """
+
+        """
+        def grad_fn(params):
+            gs = 0.0
+            for qubit_hamiltonian in qubit_hamiltonians:
+                estimate = gradient_estimator(qubit_hamiltonian, param_state, params)
+                gs += np.asarray([g.real for g in estimate.values])
+            return gs
+        """
+
+        qubit_hamiltonian = op_mapper(self.fermionic_hamiltonian)
+        def grad_fn(params):
+            estimate = gradient_estimator(qubit_hamiltonian, param_state, params)
+            return np.asarray([g.real for g in estimate.values])
+
+        print("----VQE-----")
+
+        if self.is_init_random:
+            np.random.seed(self.seed)
+            init_params = np.random.random(size=param_circuit.parameter_count)
+        else:
+            init_params = [0.0] * param_circuit.parameter_count
+
+        result = vqe(init_params, cost_fn, grad_fn, self.optimizer)
+
+        self.opt_param = result.params
+
+        # Store optimal state
+        self.opt_state = param_state.bind_parameters(result.params)
+
+        # Get energy
+        self.e = result.cost
+        return self.e, None
