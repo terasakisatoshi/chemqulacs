@@ -6,21 +6,22 @@ from pyscf import gto, scf
 from chemqulacs.vqe.vqeci import Ansatz
 from chemqulacs.vqe import vqemcscf
 from quri_parts.algo.optimizer import Adam
-from quri_parts.itensor.load_itensor import ensure_itensor_loaded
+#from chemqulacs.vqe.vqeci import QulacsBackend
 
-ensure_itensor_loaded() # グローバル空間で実行する必要がある．
+from quri_parts.itensor.load_itensor import ensure_itensor_loaded
+from chemqulacs.vqe.vqeci import ITensorBackend
+ensure_itensor_loaded() # ITensorBackend を使う場合はグローバル空間でこの関数を実行する必要がある．
 
 def main(npartitions=1):
-    from chemqulacs.vqe.vqeci import QulacsBackend, ITensorBackend
     print("=== START ===")
-    #mol = gto.M(atom="Li 0 0 0; H 0 0 1.6", basis="sto3g")
-    mol = gto.M(atom = 'O 0 0 0; H 0 1 0; H 0 0 1', basis = 'ccpvdz')
+    mol = gto.M(atom="Li 0 0 0; H 0 0 1.6", basis="sto3g")
+    #mol = gto.M(atom = 'O 0 0 0; H 0 1 0; H 0 0 1', basis = 'ccpvdz'), ncas = 6, nelecs = 8
     mf = scf.RHF(mol)
     mf.run()
     mc_vqe = vqemcscf.VQECASCI(
         mf,
-        ncas=6,
-        nelecas=8,
+        ncas=3,
+        nelecas=4,
         optimizer=Adam(ftol=1e-3),
         backend=ITensorBackend(),
         ansatz=Ansatz.HardwareEfficient,
@@ -42,7 +43,6 @@ def main(npartitions=1):
 
 
 if __name__ == "__main__":
-    ensure_itensor_loaded()
     print(sys.version)
     assert metadata.version("quri_parts_itensor") == "0.15.1"
     #main(npartitions=None)
