@@ -14,7 +14,7 @@ def test_vqecasci():
     mf.run()
     mc_vqe = vqemcscf.VQECASCI(
         mf,
-        ncas=6,
+        ncas=3,
         nelecas=4,
         optimizer=Adam(ftol=1e-3),
         # backend=ITensorBackend(),  # ここを QulacsBackend に変更しても良い
@@ -35,7 +35,7 @@ def test_vqecasci_npartititions():
     mf.run()
     mc_vqe = vqemcscf.VQECASCI(
         mf,
-        ncas=6,
+        ncas=3,
         nelecas=4,
         optimizer=Adam(ftol=1e-3),
         # backend=ITensorBackend(),  # ここを QulacsBackend に変更しても良い
