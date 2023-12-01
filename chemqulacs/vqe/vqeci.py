@@ -9,7 +9,7 @@
 # limitations under the License.
 
 # type:ignore
-
+import functools
 import importlib
 import concurrent.futures
 from multiprocessing import get_context
@@ -690,18 +690,31 @@ class VQECI(object):
             )
         return dm2
 
-def _sequential_cost_fn(estimator_state_tuple, hs):
-    estimator, state = estimator_state_tuple
-    return [estimator(h, state) for h in hs]
+def _sequential_cost_fn(estimator_s_p_triplet, hs):
+    parametric_estimator, s, p = estimator_s_p_triplet
+    return [parametric_estimator(h, s, p) for h in hs]
+
+def _sequential_grad_fn(estimator_s_p_triplet, hs):
+    parametric_estimator, s, p = estimator_s_p_triplet
+    return [parametric_estimator(h, s, p) for h in hs]
+
+def parametric_estimator_wrapper(backend, *o_s_p_triplet):
+    o, s, p = o_s_p_triplet
+    if isinstance(backend, QulacsBackend):
+        from quri_parts.qulacs.estimator import create_qulacs_vector_parametric_estimator
+        estimator = create_qulacs_vector_concurrent_parametric_estimator()
+    if isinstance(backend, ITensorBackend):
+        from quri_parts.itensor.estimator import create_itensor_mps_parametric_estimator
+        estimator = create_itensor_mps_concurrent_parametric_estimator()
+    return estimator(o, s, p)
 
 from quri_parts.core.estimator.gradient import parameter_shift_gradient_estimates
-def _sequential_grad_fn(estimator_state_tuple, hs):
-    estimator, state = estimator_state_tuple
-    return [
-        parameter_shift_gradient_estimates(
-            h, state, params, estimator
-        ) for h in hs
-    ]
+
+def parameter_shift_gradient_estimator_wrapper(parametric_estimator, *o_s_p_triplet):
+    gradient_estimator = create_parameter_shift_gradient_estimator(parametric_estimator)
+    operator, state, params = o_s_p_triplet
+    return gradient_estimator(operator, state, params)
+
 
 class ParallelVQECI(VQECI):
     def __init__(self, *args: Any, npartitions:int=1, **kwds: Any) -> None:
@@ -780,32 +793,34 @@ class ParallelVQECI(VQECI):
         )
 
         executor = concurrent.futures.ProcessPoolExecutor(max_workers=4)
+        parametric_estimator = functools.partial(parametric_estimator_wrapper, self.backend)
         def cost_fn(params):
-            estimator = self.get_estimator()
-            s = param_state.bind_parameters(params)
             result = execute_concurrently(
                 _sequential_cost_fn,
-                common_input=(estimator, s),
+                common_input=(parametric_estimator, param_state, [params]),
                 individual_inputs=qubit_hamiltonians,
                 executor=executor,
-                concurrency=2,
-            )
+            )[0]
             r = sum(r.value.real for r in result)
             return r
 
-        """
+        gradient_estimator = functools.partial(parameter_shift_gradient_estimator_wrapper, parametric_estimator)
+
         def grad_fn(params):
-            with concurrent.futures.ProcessPoolExecutor(mp_context=get_context("spawn")) as executor:
-                # Start the load operations and mark each future with its URL
-                result = execute_concurrently(
-                    gradient_estimator,
-                    common_input=(param_state, params),
-                    individual_inputs=qubit_hamiltonians,
-                    executor=executor,
-                )
-            gs = np.sum([g.real for g in r.values] for r in result)
+            result = execute_concurrently(
+                _sequential_grad_fn,
+                common_input=(gradient_estimator, param_state, params),
+                individual_inputs=qubit_hamiltonians,
+                executor=executor,
+            )
+            gs = np.sum(np.asarray([g.real for g in r.values]) for r in result)
             return gs
-        """
+            """
+            gs = 0.0
+            estimate = gradient_estimator(qubit_hamiltonians[0], param_state, params)
+            gs += np.asarray([g.real for g in estimate.values])
+            return gs
+            """
 
         """
         def grad_fn(params):
@@ -814,12 +829,12 @@ class ParallelVQECI(VQECI):
                 estimate = gradient_estimator(qubit_hamiltonian, param_state, params)
                 gs += np.asarray([g.real for g in estimate.values])
             return gs
-        """
 
         qubit_hamiltonian = op_mapper(self.fermionic_hamiltonian)
         def grad_fn(params):
             estimate = gradient_estimator(qubit_hamiltonian, param_state, params)
             return np.asarray([g.real for g in estimate.values])
+        """
 
         print("----VQE-----")
 
