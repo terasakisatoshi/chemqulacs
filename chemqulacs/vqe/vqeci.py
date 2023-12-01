@@ -701,10 +701,10 @@ def _sequential_grad_fn(estimator_s_p_triplet, hs):
 def parametric_estimator_wrapper(backend, *o_s_p_triplet):
     o, s, p = o_s_p_triplet
     if isinstance(backend, QulacsBackend):
-        from quri_parts.qulacs.estimator import create_qulacs_vector_parametric_estimator
+        from quri_parts.qulacs.estimator import create_qulacs_vector_concurrent_parametric_estimator
         estimator = create_qulacs_vector_concurrent_parametric_estimator()
     if isinstance(backend, ITensorBackend):
-        from quri_parts.itensor.estimator import create_itensor_mps_parametric_estimator
+        from quri_parts.itensor.estimator import create_itensor_mps_concurrent_parametric_estimator
         estimator = create_itensor_mps_concurrent_parametric_estimator()
     return estimator(o, s, p)
 
@@ -792,19 +792,20 @@ class ParallelVQECI(VQECI):
             self.parametric_estimator
         )
 
-        executor = concurrent.futures.ProcessPoolExecutor(max_workers=4)
-        parametric_estimator = functools.partial(parametric_estimator_wrapper, self.backend)
+        executor = concurrent.futures.ProcessPoolExecutor()
+
+        _parametric_estimator = functools.partial(parametric_estimator_wrapper, self.backend)
+        gradient_estimator = functools.partial(parameter_shift_gradient_estimator_wrapper, _parametric_estimator)
         def cost_fn(params):
             result = execute_concurrently(
                 _sequential_cost_fn,
-                common_input=(parametric_estimator, param_state, [params]),
+                common_input=(_parametric_estimator, param_state, [params]),
                 individual_inputs=qubit_hamiltonians,
                 executor=executor,
             )[0]
             r = sum(r.value.real for r in result)
             return r
 
-        gradient_estimator = functools.partial(parameter_shift_gradient_estimator_wrapper, parametric_estimator)
 
         def grad_fn(params):
             result = execute_concurrently(
