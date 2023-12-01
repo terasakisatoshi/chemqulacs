@@ -690,9 +690,18 @@ class VQECI(object):
             )
         return dm2
 
-def _sequential_cost_fn(estimator_s_tuple, hs):
-    estimator, s = estimator_s_tuple
-    return [estimator(h, s) for h in hs]
+def _sequential_cost_fn(estimator_s_p_triplet, hs):
+    parametric_estimator, s, p = estimator_s_p_triplet
+    return [parametric_estimator(h, s, p) for h in hs]
+
+from quri_parts.core.estimator.gradient import parameter_shift_gradient_estimates
+def _sequential_grad_fn(estimator_s_p_triplet, hs):
+    parametric_estimator, state, params = estimator_s_p_triplet
+    return [
+        parameter_shift_gradient_estimates(
+            h, state, params, parametric_estimator
+        ) for h in hs
+    ]
 
 class ParallelVQECI(VQECI):
     def __init__(self, *args: Any, npartitions:int=1, **kwds: Any) -> None:
@@ -706,15 +715,15 @@ class ParallelVQECI(VQECI):
             from quri_parts.qulacs.estimator import create_qulacs_vector_estimator
             estimator = create_qulacs_vector_estimator()
         if isinstance(self.backend, ITensorBackend):
-            """
-            from quri_parts.itensor.estimator import create_itensor_mps_estimator
-            from quri_parts.itensor.load_itensor import ensure_itensor_loaded
-            ensure_itensor_loaded()
-            create_itensor_mps_estimator() # alters ensure_itensor_loaded()
-            from juliacall import Main as jl
-            jl.siteinds("Qubit", 3)
-            """
             estimator = importlib.import_module("quri_parts.itensor.estimator")._estimate
+        return estimator
+    def get_parametric_estimator(self):
+        if isinstance(self.backend, QulacsBackend):
+            from quri_parts.qulacs.estimator import create_qulacs_vector_parametric_estimator
+            estimator = create_qulacs_vector_parametric_estimator()
+        if isinstance(self.backend, ITensorBackend):
+            from quri_parts.itensor.estimator import create_itensor_mps_parametric_estimator
+            estimator = create_itensor_mps_parametric_estimator
         return estimator
 
     def kernel(self, h1, h2, norb, nelec, ecore=0, **kwargs):
@@ -769,22 +778,18 @@ class ParallelVQECI(VQECI):
         gradient_estimator = create_parameter_shift_gradient_estimator(
             self.parametric_estimator
         )
-        from quri_parts.qulacs.estimator import create_qulacs_vector_parametric_estimator
-        self.parametric_estimator = create_qulacs_vector_parametric_estimator()
 
-
+        executor = concurrent.futures.ProcessPoolExecutor(max_workers=4)
         def cost_fn(params):
-            estimator = self.get_estimator()
-            s = param_state.bind_parameters(params)
-            with concurrent.futures.ProcessPoolExecutor(mp_context=get_context("spawn")) as executor:
-                # Start the load operations and mark each future with its URL
-                result = execute_concurrently(
-                    _sequential_cost_fn,
-                    common_input=(estimator, s),
-                    individual_inputs=qubit_hamiltonians,
-                    executor=executor,
-                    concurrency=1,
-                )
+            estimator = self.get_parametric_estimator()
+            #s = param_state.bind_parameters(params)
+            result = execute_concurrently(
+                _sequential_cost_fn,
+                common_input=(estimator, param_state, params),
+                individual_inputs=qubit_hamiltonians,
+                executor=executor,
+                concurrency=2,
+            )
             r = sum(r.value.real for r in result)
             return r
 
