@@ -1,5 +1,5 @@
 import concurrent
-from multiporcessing import get_context
+from multiprocessing import get_context
 import sys
 import time
 from importlib import metadata
