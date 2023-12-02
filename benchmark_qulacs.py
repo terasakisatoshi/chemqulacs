@@ -54,14 +54,14 @@ def main(npartitions=1, executor = concurrent.futures.ProcessPoolExecutor()):
 
 if __name__ == "__main__":
     print(sys.version)
-    executor = concurrent.futures.ProcessPoolExecutor()
     assert metadata.version("quri_parts_itensor") == "0.15.1"
-    etimes = {i: [] for i in [None, 1, 2, 4, 6]}
-    for npartitions in [None, 1, 2, 4, 6]:
-        # 初回実行のオーバヘッドを避ける
-        main(npartitions=npartitions, executor=executor)
-        for i in range(5):
-            etimes[npartitions].append(main(npartitions=npartitions, executor=executor))
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        etimes = {i: [] for i in [None, 1, 2, 4, 6]}
+        for npartitions in [None, 1, 2, 4, 6]:
+            # 初回実行のオーバヘッドを避ける
+            main(npartitions=npartitions, executor=executor)
+            for i in range(5):
+                etimes[npartitions].append(main(npartitions=npartitions, executor=executor))
 
     xs = []
     ys = []
