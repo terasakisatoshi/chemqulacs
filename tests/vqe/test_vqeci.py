@@ -12,7 +12,7 @@ from typing import Any
 
 import numpy as np
 import pytest
-from openfermion import InteractionOperator, MolecularData, FermionOperator
+from openfermion import FermionOperator, InteractionOperator, MolecularData
 from openfermionpyscf import run_pyscf
 from pyscf import gto
 from quri_parts.algo.ansatz import HardwareEfficient, SymmetryPreserving
@@ -394,6 +394,7 @@ def test_make_dm2():
     )
     assert np.allclose(dm2, expected)
 
+
 def test_in_partition_zero_sites():
     sites = ()
     npartitions = 3
@@ -481,6 +482,7 @@ def test_in_partition_invalid_sites_format():
     with pytest.raises(ValueError):
         in_partition(invalid_sites_format, rank, npartitions)
 
+
 def test_partition_empty_fermion_operator():
     h = FermionOperator()
     npartitions = 3
@@ -563,6 +565,7 @@ def test_partition_multiple_terms_fermion_operator():
     partitions = partition(h, npartitions)
     assert partitions[0] == h
     assert sum(partitions) == h
+
 
 def test_partition_npartitions_4():
     """
@@ -687,7 +690,6 @@ def test_partition_npartitions_4():
     }
 
     assert sum(partitions) == h
-
 
 
 class TestCreateAnsatz:
