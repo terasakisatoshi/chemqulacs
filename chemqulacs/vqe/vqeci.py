@@ -9,6 +9,7 @@
 # limitations under the License.
 
 # type:ignore
+import concurrent
 import functools
 import importlib
 from enum import Enum, auto
@@ -843,7 +844,7 @@ class ParallelVQECI(VQECI):
                 common_input=(_parametric_estimator, param_state, [params]),
                 individual_inputs=qubit_hamiltonians,
                 executor=executor,
-                concurrency=self.npartitions,
+                concurrency=len(qubit_hamiltonians),
             )[0]
             r = sum(r.value.real for r in result)
             return r
@@ -854,7 +855,7 @@ class ParallelVQECI(VQECI):
                 common_input=(gradient_estimator, param_state, params),
                 individual_inputs=qubit_hamiltonians,
                 executor=executor,
-                concurrency=self.npartitions,
+                concurrency=len(qubit_hamiltonians),
             )
             gs = np.sum(np.asarray([g.real for g in r.values]) for r in result)
             return gs
