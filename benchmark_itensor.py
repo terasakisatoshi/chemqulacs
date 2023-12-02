@@ -16,7 +16,7 @@ from matplotlib import pyplot as plt
 ensure_itensor_loaded()  # ITensorBackend を使う場合はグローバル空間でこの関数を実行する必要がある．
 
 
-def main(npartitions=1, executor=concurrent.futures.ProcessPoolExecutor()):
+def main(npartitions, executor):
     print("=== START ===")
     """
     mol = gto.M(atom="Li 0 0 0; H 0 0 1.6", basis="sto3g")
@@ -62,7 +62,9 @@ if __name__ == "__main__":
     print(sys.version)
     assert metadata.version("quri_parts_itensor") == "0.15.1"
     # Remark: mp_context=get_context("spawn") を指定しないと Docker のコンテナ内部で実行するときに失敗する
-    with concurrent.futures.ProcessPoolExecutor(max_workers=6, mp_context=get_context("spawn")) as executor:
+    #with concurrent.futures.ProcessPoolExecutor(max_workers=6, mp_context=get_context("spawn")) as executor:
+    executor = concurrent.futures.ProcessPoolExecutor(mp_context=get_context("spawn"))
+    if True:
         ttfx = {}
         etimes = {i: [] for i in [None, 1, 2, 4, 6]}
         for npartitions in [None, 1, 2, 4, 6]:
@@ -75,7 +77,7 @@ if __name__ == "__main__":
 
     s = [ttfx[k] for k in [None, 1, 2, 4, 6]]
     fig, ax = plt.subplots()
-    ax.plot(s)
+    ax.plot([0, 1, 2, 4, 6], s, marker="x")
     fig.savefig("ttfx_itensor.png")
 
     xs = []

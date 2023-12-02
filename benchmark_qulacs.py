@@ -13,7 +13,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 
-def main(npartitions=1, executor=concurrent.futures.ProcessPoolExecutor()):
+def main(npartitions, executor):
     print("=== START ===")
     """
     mol = gto.M(atom="Li 0 0 0; H 0 0 1.6", basis="sto3g")
@@ -71,7 +71,7 @@ if __name__ == "__main__":
 
     s = [ttfx[k] for k in [None, 1, 2, 4, 6]]
     fig, ax = plt.subplots()
-    ax.plot(s, marker="x")
+    ax.plot([0, 1, 2, 4, 6], s, marker="x")
     fig.savefig("ttfx_qulacs.png")
 
     xs = []
