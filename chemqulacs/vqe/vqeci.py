@@ -739,6 +739,8 @@ class ParallelVQECI(VQECI):
     ) -> None:
         super().__init__(*args, **kwds)
         self.npartitions: int = npartitions
+        if executor is None:
+            executor = concurrent.futures.ProcessPoolExecutor()
         self.executor = executor
 
     def __call__(self, *args: Any, **kwds: Any) -> Any:
