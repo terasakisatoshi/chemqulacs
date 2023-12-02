@@ -69,7 +69,7 @@ if __name__ == "__main__":
         x = npartitions
         if npartitions is None:
             x = 0
-        y = np.mean(etimes[x])
+        y = np.mean(etimes[npartitions])
         xs.append(x)
         ys.append(y)
     plt.plot(xs, ys)
