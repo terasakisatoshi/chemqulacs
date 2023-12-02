@@ -20,7 +20,8 @@ def main(npartitions=1, executor=concurrent.futures.ProcessPoolExecutor()):
     nelecs = 4
     """
 
-    mol = gto.M(atom="O 0 0 0; H 0 1 0; H 0 0 1", basis="ccpvdz")
+    # https://github.com/pyscf/pyscf.github.io/blob/master/examples/mcscf/00-simple_casci.py
+    mol = gto.M(atom = 'O 0 0 0; O 0 0 1.2', basis="ccpvdz")
     ncas = 6
     nelecs = 8
 
@@ -68,7 +69,7 @@ if __name__ == "__main__":
 
     s = [ttfx[k] for k in [None, 1, 2, 4, 6]]
     fig, ax = plt.subplots()
-    ax.plot(s)
+    ax.plot(s, marker='x')
     fig.savefig("ttfx_qulacs.png")
 
     xs = []
@@ -82,5 +83,5 @@ if __name__ == "__main__":
         ys.append(y)
 
     fig, ax = plt.subplots()
-    ax.plot(xs, ys)
+    ax.plot(xs, ys, marker='x')
     fig.savefig("benchmark_qulacs.png")
