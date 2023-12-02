@@ -1,14 +1,13 @@
 from pyscf import gto, mcscf, scf
+from quri_parts.algo.optimizer import Adam
+from quri_parts.itensor.load_itensor import ensure_itensor_loaded
 
 from chemqulacs.util import utils
 from chemqulacs.vqe import vqemcscf
-from chemqulacs.vqe.vqeci import Ansatz
-from quri_parts.algo.optimizer import Adam
-from chemqulacs.vqe.vqeci import ITensorBackend
-
-from quri_parts.itensor.load_itensor import ensure_itensor_loaded
+from chemqulacs.vqe.vqeci import Ansatz, ITensorBackend
 
 ensure_itensor_loaded()  # ITensorBackend を使う場合はグローバル空間でこの関数を実行する必要がある．
+
 
 def test_vqecasci():
     print("=== START ===")
@@ -47,9 +46,10 @@ def test_vqecasci_npartititions():
         layers=4,
         is_init_random=False,
         seed=10,
-        npartitions=4
+        npartitions=4,
     )
     return mc_vqe.e_tot
+
 
 if __name__ == "__main__":
     a = test_vqecasci()

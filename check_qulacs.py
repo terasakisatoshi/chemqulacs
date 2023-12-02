@@ -1,10 +1,10 @@
 from pyscf import gto, mcscf, scf
+from quri_parts.algo.optimizer import Adam
 
 from chemqulacs.util import utils
 from chemqulacs.vqe import vqemcscf
-from chemqulacs.vqe.vqeci import Ansatz
-from quri_parts.algo.optimizer import Adam
-from chemqulacs.vqe.vqeci import QulacsBackend
+from chemqulacs.vqe.vqeci import Ansatz, QulacsBackend
+
 
 def test_vqecasci():
     print("=== START ===")
@@ -44,9 +44,10 @@ def test_vqecasci_npartititions():
         layers=4,
         is_init_random=False,
         seed=10,
-        npartitions=4
+        npartitions=4,
     )
     return mc_vqe.e_tot
+
 
 if __name__ == "__main__":
     a = test_vqecasci()
