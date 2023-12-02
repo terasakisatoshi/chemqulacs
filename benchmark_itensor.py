@@ -1,4 +1,5 @@
 import concurrent
+from multiporcessing import get_context
 import sys
 import time
 from importlib import metadata
@@ -24,7 +25,7 @@ def main(npartitions=1, executor=concurrent.futures.ProcessPoolExecutor()):
     """
 
     # https://github.com/pyscf/pyscf.github.io/blob/master/examples/mcscf/00-simple_casci.py
-    mol = gto.M(atom = 'O 0 0 0; O 0 0 1.2', basis="ccpvdz")
+    mol = gto.M(atom="O 0 0 0; O 0 0 1.2", basis="ccpvdz", spin=2)
     ncas = 6
     nelecs = 8
 
@@ -60,7 +61,7 @@ def main(npartitions=1, executor=concurrent.futures.ProcessPoolExecutor()):
 if __name__ == "__main__":
     print(sys.version)
     assert metadata.version("quri_parts_itensor") == "0.15.1"
-    with concurrent.futures.ProcessPoolExecutor() as executor:
+    with concurrent.futures.ProcessPoolExecutor(mp_context=get_context("spawn")) as executor:
         ttfx = {}
         etimes = {i: [] for i in [None, 1, 2, 4, 6]}
         for npartitions in [None, 1, 2, 4, 6]:
