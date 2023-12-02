@@ -13,15 +13,15 @@ from matplotlib import pyplot as plt
 
 def main(npartitions=1, executor = concurrent.futures.ProcessPoolExecutor()):
     print("=== START ===")
+    """
     mol = gto.M(atom="Li 0 0 0; H 0 0 1.6", basis="sto3g")
     ncas = 3
     nelecs = 4
-
     """
+
     mol = gto.M(atom = 'O 0 0 0; H 0 1 0; H 0 0 1', basis = 'ccpvdz')
     ncas = 6
     nelecs = 8
-    """
 
     mf = scf.RHF(mol)
     mf.run()
