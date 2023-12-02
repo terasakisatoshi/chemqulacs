@@ -73,4 +73,4 @@ if __name__ == "__main__":
         xs.append(x)
         ys.append(y)
     plt.plot(xs, ys)
-    plt.savefig("benchmark.png")
+    plt.savefig("benchmark_qulacs.png")
