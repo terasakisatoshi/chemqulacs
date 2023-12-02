@@ -70,7 +70,7 @@ if __name__ == "__main__":
                     main(npartitions=npartitions, executor=executor)
                 )
 
-    s = {v for (k, v) in ttfx.items()}
+    s = [ttfx[k] for k in [None, 1, 2, 4, 6]]
     fig, ax = plt.subplots()
     ax.plot(s)
     fig.savefig("ttfx_itensor.png")
