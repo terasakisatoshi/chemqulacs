@@ -9,25 +9,33 @@ from quri_parts.itensor.load_itensor import ensure_itensor_loaded
 
 from chemqulacs.vqe import vqemcscf
 from chemqulacs.vqe.vqeci import Ansatz, ITensorBackend, QulacsBackend
+import numpy as np
+from matplotlib import pyplot as plt
 
 ensure_itensor_loaded()  # ITensorBackend を使う場合はグローバル空間でこの関数を実行する必要がある．
 
 
-def main(npartitions=1):
+def main(npartitions=1, executor = concurrent.futures.ProcessPoolExecutor()):
     print("=== START ===")
     mol = gto.M(atom="Li 0 0 0; H 0 0 1.6", basis="sto3g")
-    # mol = gto.M(atom = 'O 0 0 0; H 0 1 0; H 0 0 1', basis = 'ccpvdz'), ncas = 6, nelecs = 8
+    ncas = 3
+    nelecs = 4
+
+    mol = gto.M(atom = 'O 0 0 0; H 0 1 0; H 0 0 1', basis = 'ccpvdz')
+    ncas = 6
+    nelecs = 8
+
     mf = scf.RHF(mol)
     mf.run()
-    executor = concurrent.futures.ProcessPoolExecutor()
+
 
     mc_vqe = vqemcscf.VQECASCI(
         mf,
-        ncas=3,
-        nelecas=4,
+        ncas=ncas,
+        nelecas=nelecs,
         optimizer=Adam(ftol=1e-3),
         backend=ITensorBackend(),  # ここを QulacsBackend に変更しても良い
-        # backend=QulacsBackend(),  # ここを ITensorBackend に変更しても良い
+        #backend=QulacsBackend(),  # ここを ITensorBackend に変更しても良い
         ansatz=Ansatz.HardwareEfficient,
         layers=4,
         is_init_random=False,
@@ -44,18 +52,28 @@ def main(npartitions=1):
     print(f"elapsed time = {elapsed}", "[sec]")
     print("=== END ===")
     print()
+    return elapsed
 
 
 if __name__ == "__main__":
     print(sys.version)
+    executor = concurrent.futures.ProcessPoolExecutor()
     assert metadata.version("quri_parts_itensor") == "0.15.1"
-    main(npartitions=None)
-    main(npartitions=None)
-    main(npartitions=4)
+    etimes = {i: [] for i in [None, 1, 2, 4, 6]}
+    for npartitions in [None, 1, 2, 4, 6]:
+        # 初回実行のオーバヘッドを避ける
+        main(npartitions=npartitions, executor=executor)
+        for i in range(5):
+            etimes[npartitions].append(main(npartitions=npartitions, executor=executor))
 
-    main(npartitions=1)
-    main(npartitions=1)
-    main(npartitions=2)
-    main(npartitions=2)
-    main(npartitions=4)
-    main(npartitions=8)
+    xs = []
+    ys = []
+    for npartitions in [None, 1, 2, 4, 6]:
+        x = npartitions
+        if npartitions is None:
+            x = 0
+        y = np.mean(etimes[x])
+        xs.append(x)
+        ys.append(y)
+    plt.plot(xs, ys)
+    plt.savefig("benchmark.png")
