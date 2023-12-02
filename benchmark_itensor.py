@@ -62,9 +62,7 @@ if __name__ == "__main__":
     print(sys.version)
     assert metadata.version("quri_parts_itensor") == "0.15.1"
     # Remark: mp_context=get_context("spawn") を指定しないと Docker のコンテナ内部で実行するときに失敗する
-    #with concurrent.futures.ProcessPoolExecutor(max_workers=6, mp_context=get_context("spawn")) as executor:
-    executor = concurrent.futures.ProcessPoolExecutor(mp_context=get_context("spawn"))
-    if True:
+    with concurrent.futures.ProcessPoolExecutor(max_workers=6, mp_context=get_context("spawn")) as executor:
         ttfx = {}
         etimes = {i: [] for i in [None, 1, 2, 4, 6]}
         for npartitions in [None, 1, 2, 4, 6]:
