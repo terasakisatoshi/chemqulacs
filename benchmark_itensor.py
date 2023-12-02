@@ -17,9 +17,11 @@ ensure_itensor_loaded()  # ITensorBackend を使う場合はグローバル空�
 
 def main(npartitions=1, executor = concurrent.futures.ProcessPoolExecutor()):
     print("=== START ===")
+    """
     mol = gto.M(atom="Li 0 0 0; H 0 0 1.6", basis="sto3g")
     ncas = 3
     nelecs = 4
+    """
 
     mol = gto.M(atom = 'O 0 0 0; H 0 1 0; H 0 0 1', basis = 'ccpvdz')
     ncas = 6
