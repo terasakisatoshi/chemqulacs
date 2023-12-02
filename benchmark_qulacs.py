@@ -11,7 +11,8 @@ from chemqulacs.vqe.vqeci import Ansatz, QulacsBackend
 import numpy as np
 from matplotlib import pyplot as plt
 
-def main(npartitions=1, executor = concurrent.futures.ProcessPoolExecutor()):
+
+def main(npartitions=1, executor=concurrent.futures.ProcessPoolExecutor()):
     print("=== START ===")
     """
     mol = gto.M(atom="Li 0 0 0; H 0 0 1.6", basis="sto3g")
@@ -19,13 +20,12 @@ def main(npartitions=1, executor = concurrent.futures.ProcessPoolExecutor()):
     nelecs = 4
     """
 
-    mol = gto.M(atom = 'O 0 0 0; H 0 1 0; H 0 0 1', basis = 'ccpvdz')
+    mol = gto.M(atom="O 0 0 0; H 0 1 0; H 0 0 1", basis="ccpvdz")
     ncas = 6
     nelecs = 8
 
     mf = scf.RHF(mol)
     mf.run()
-
 
     mc_vqe = vqemcscf.VQECASCI(
         mf,
@@ -56,12 +56,20 @@ if __name__ == "__main__":
     print(sys.version)
     assert metadata.version("quri_parts_itensor") == "0.15.1"
     with concurrent.futures.ProcessPoolExecutor() as executor:
+        ttfx = {}
         etimes = {i: [] for i in [None, 1, 2, 4, 6]}
         for npartitions in [None, 1, 2, 4, 6]:
             # 初回実行のオーバヘッドを避ける
-            main(npartitions=npartitions, executor=executor)
+            ttfx[npartitions] = main(npartitions=npartitions, executor=executor)
             for i in range(5):
-                etimes[npartitions].append(main(npartitions=npartitions, executor=executor))
+                etimes[npartitions].append(
+                    main(npartitions=npartitions, executor=executor)
+                )
+
+    s = {v for (k, v) in ttfx.items()}
+    fig, ax = plt.subplots()
+    ax.plot(s)
+    fig.savefig("ttfx_qulacs.png")
 
     xs = []
     ys = []
@@ -72,5 +80,7 @@ if __name__ == "__main__":
         y = np.mean(etimes[npartitions])
         xs.append(x)
         ys.append(y)
-    plt.plot(xs, ys)
-    plt.savefig("benchmark_qulacs.png")
+
+    fig, ax = plt.subplots()
+    ax.plot(xs, ys)
+    fig.savefig("benchmark_qulacs.png")
