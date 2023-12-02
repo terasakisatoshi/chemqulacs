@@ -9,12 +9,18 @@
 # limitations under the License.
 
 from typing import Optional
+
 from pyscf.mcscf import casci, mc1step
 from quri_parts.algo.optimizer import Adam
 from quri_parts.openfermion.transforms import jordan_wigner
 
-from chemqulacs.vqe.vqeci import VQECI, ParallelVQECI
-from chemqulacs.vqe.vqeci import Ansatz, Backend, QulacsBackend
+from chemqulacs.vqe.vqeci import (
+    VQECI,
+    Ansatz,
+    Backend,
+    ParallelVQECI,
+    QulacsBackend,
+)
 
 
 class VQECASCI(casci.CASCI):
@@ -77,6 +83,7 @@ class VQECASCI(casci.CASCI):
         is_init_random: bool = False,
         seed: int = 0,
         npartitions: Optional[int] = None,
+        executor: Optional["Executor"] = None,
     ):
         casci.CASCI.__init__(self, mf, ncas, nelecas, ncore)
         if npartitions is None:
@@ -115,6 +122,7 @@ class VQECASCI(casci.CASCI):
                 is_init_random=is_init_random,
                 seed=seed,
                 npartitions=npartitions,
+                executor=executor,
             )
 
 
@@ -179,6 +187,7 @@ class VQECASSCF(mc1step.CASSCF):
         is_init_random: bool = False,
         seed: int = 0,
         npartitions: Optional[int] = None,
+        executor: Optional["Executor"] = None,
     ):
         mc1step.CASSCF.__init__(self, mf, ncas, nelecas, ncore, nfrozen)
         if npartitions is None:
@@ -198,7 +207,7 @@ class VQECASSCF(mc1step.CASSCF):
                 singlet_excitation=singlet_excitation,
                 is_init_random=is_init_random,
                 seed=seed,
-        )
+            )
         else:
             self.fcisolver = ParallelVQECI(
                 mf.mol,
@@ -217,4 +226,5 @@ class VQECASSCF(mc1step.CASSCF):
                 is_init_random=is_init_random,
                 seed=seed,
                 npartitions=npartitions,
+                executor=executor,
             )

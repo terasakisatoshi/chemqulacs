@@ -11,17 +11,13 @@
 # type:ignore
 import functools
 import importlib
-import concurrent.futures
-from multiprocessing import get_context
 from enum import Enum, auto
 from itertools import product
-from typing import Any, Mapping, Optional, Sequence, List
+from typing import Any, List, Mapping, Optional, Sequence
 
 import numpy as np
 from braket.aws import AwsDevice
 from openfermion.ops import FermionOperator, InteractionOperator
-from quri_parts.core.operator import Operator
-from quri_parts.core.utils.concurrent import execute_concurrently
 from openfermion.transforms import get_fermion_operator
 from pyscf import ao2mo
 from qiskit import IBMQ
@@ -46,6 +42,7 @@ from quri_parts.core.estimator.gradient import (
 )
 from quri_parts.core.estimator.sampling import create_sampling_estimator
 from quri_parts.core.measurement import bitwise_commuting_pauli_measurement
+from quri_parts.core.operator import Operator
 from quri_parts.core.sampling import (
     create_concurrent_sampler_from_sampling_backend,
 )
@@ -56,6 +53,7 @@ from quri_parts.core.state import (
     CircuitQuantumState,
     ParametricCircuitQuantumState,
 )
+from quri_parts.core.utils.concurrent import execute_concurrently
 from quri_parts.openfermion.ansatz import KUpCCGSD, TrotterUCCSD
 from quri_parts.openfermion.transforms import (
     OpenFermionQubitMapping,
@@ -68,6 +66,7 @@ from quri_parts.qulacs.estimator import (
 )
 
 from chemqulacs.vqe.rdm import get_1rdm, get_2rdm
+
 
 class Backend:
     """Base class represents backend"""
@@ -85,7 +84,6 @@ class ITensorBackend(Backend):
     """Backend class for ITensor"""
 
     pass
-
 
 
 class AWSBackend(Backend):
@@ -206,6 +204,7 @@ def _get_active_hamiltonian(h1, h2, norb, ecore):
     )
     return active_hamiltonian
 
+
 def in_partition(sites: tuple, rank: int, npartitions: int) -> bool:
     """
     Determine whether a given set of 'sites' belongs to a specific rank or not.
@@ -304,6 +303,7 @@ def partition(h: FermionOperator, npartitions: int) -> List[FermionOperator]:
                 c = h.terms[sites]
                 fermion_operators[rank] += FermionOperator(sites, c)
     return fermion_operators
+
 
 def _create_concurrent_estimators(
     backend: Backend, shots_per_iter: int
@@ -690,25 +690,38 @@ class VQECI(object):
             )
         return dm2
 
+
 def _sequential_cost_fn(estimator_s_p_triplet, hs):
     parametric_estimator, s, p = estimator_s_p_triplet
     return [parametric_estimator(h, s, p) for h in hs]
+
 
 def _sequential_grad_fn(estimator_s_p_triplet, hs):
     parametric_estimator, s, p = estimator_s_p_triplet
     return [parametric_estimator(h, s, p) for h in hs]
 
+
 def parametric_estimator_wrapper(backend, *o_s_p_triplet):
     o, s, p = o_s_p_triplet
     if isinstance(backend, QulacsBackend):
-        from quri_parts.qulacs.estimator import create_qulacs_vector_concurrent_parametric_estimator
+        from quri_parts.qulacs.estimator import (
+            create_qulacs_vector_concurrent_parametric_estimator,
+        )
+
         estimator = create_qulacs_vector_concurrent_parametric_estimator()
     if isinstance(backend, ITensorBackend):
-        from quri_parts.itensor.estimator import create_itensor_mps_concurrent_parametric_estimator
+        from quri_parts.itensor.estimator import (
+            create_itensor_mps_concurrent_parametric_estimator,
+        )
+
         estimator = create_itensor_mps_concurrent_parametric_estimator()
     return estimator(o, s, p)
 
-from quri_parts.core.estimator.gradient import parameter_shift_gradient_estimates
+
+from quri_parts.core.estimator.gradient import (
+    parameter_shift_gradient_estimates,
+)
+
 
 def parameter_shift_gradient_estimator_wrapper(parametric_estimator, *o_s_p_triplet):
     gradient_estimator = create_parameter_shift_gradient_estimator(parametric_estimator)
@@ -717,25 +730,45 @@ def parameter_shift_gradient_estimator_wrapper(parametric_estimator, *o_s_p_trip
 
 
 class ParallelVQECI(VQECI):
-    def __init__(self, *args: Any, npartitions:int=1, **kwds: Any) -> None:
+    def __init__(
+        self,
+        *args: Any,
+        npartitions: int = 1,
+        executor: Optional["Executor"] = None,
+        **kwds: Any,
+    ) -> None:
         super().__init__(*args, **kwds)
         self.npartitions: int = npartitions
+        self.executor = executor
+
     def __call__(self, *args: Any, **kwds: Any) -> Any:
         return super().__call__(*args, **kwds)
 
     def get_estimator(self):
         if isinstance(self.backend, QulacsBackend):
-            from quri_parts.qulacs.estimator import create_qulacs_vector_estimator
+            from quri_parts.qulacs.estimator import (
+                create_qulacs_vector_estimator,
+            )
+
             estimator = create_qulacs_vector_estimator()
         if isinstance(self.backend, ITensorBackend):
-            estimator = importlib.import_module("quri_parts.itensor.estimator")._estimate
+            estimator = importlib.import_module(
+                "quri_parts.itensor.estimator"
+            )._estimate
         return estimator
+
     def get_parametric_estimator(self):
         if isinstance(self.backend, QulacsBackend):
-            from quri_parts.qulacs.estimator import create_qulacs_vector_parametric_estimator
+            from quri_parts.qulacs.estimator import (
+                create_qulacs_vector_parametric_estimator,
+            )
+
             estimator = create_qulacs_vector_parametric_estimator()
         if isinstance(self.backend, ITensorBackend):
-            from quri_parts.itensor.estimator import create_itensor_mps_parametric_estimator
+            from quri_parts.itensor.estimator import (
+                create_itensor_mps_parametric_estimator,
+            )
+
             estimator = create_itensor_mps_parametric_estimator
         return estimator
 
@@ -792,20 +825,26 @@ class ParallelVQECI(VQECI):
             self.parametric_estimator
         )
 
-        executor = concurrent.futures.ProcessPoolExecutor()
+        # executor = concurrent.futures.ProcessPoolExecutor()
+        executor = self.executor
 
-        _parametric_estimator = functools.partial(parametric_estimator_wrapper, self.backend)
-        gradient_estimator = functools.partial(parameter_shift_gradient_estimator_wrapper, _parametric_estimator)
+        _parametric_estimator = functools.partial(
+            parametric_estimator_wrapper, self.backend
+        )
+        gradient_estimator = functools.partial(
+            parameter_shift_gradient_estimator_wrapper, _parametric_estimator
+        )
+
         def cost_fn(params):
             result = execute_concurrently(
                 _sequential_cost_fn,
                 common_input=(_parametric_estimator, param_state, [params]),
                 individual_inputs=qubit_hamiltonians,
                 executor=executor,
+                concurrency=self.npartitions,
             )[0]
             r = sum(r.value.real for r in result)
             return r
-
 
         def grad_fn(params):
             result = execute_concurrently(
@@ -813,6 +852,7 @@ class ParallelVQECI(VQECI):
                 common_input=(gradient_estimator, param_state, params),
                 individual_inputs=qubit_hamiltonians,
                 executor=executor,
+                concurrency=self.npartitions,
             )
             gs = np.sum(np.asarray([g.real for g in r.values]) for r in result)
             return gs
