@@ -747,34 +747,6 @@ class ParallelVQECI(VQECI):
     def __call__(self, *args: Any, **kwds: Any) -> Any:
         return super().__call__(*args, **kwds)
 
-    def get_estimator(self):
-        if isinstance(self.backend, QulacsBackend):
-            from quri_parts.qulacs.estimator import (
-                create_qulacs_vector_estimator,
-            )
-
-            estimator = create_qulacs_vector_estimator()
-        if isinstance(self.backend, ITensorBackend):
-            estimator = importlib.import_module(
-                "quri_parts.itensor.estimator"
-            )._estimate
-        return estimator
-
-    def get_parametric_estimator(self):
-        if isinstance(self.backend, QulacsBackend):
-            from quri_parts.qulacs.estimator import (
-                create_qulacs_vector_parametric_estimator,
-            )
-
-            estimator = create_qulacs_vector_parametric_estimator()
-        if isinstance(self.backend, ITensorBackend):
-            from quri_parts.itensor.estimator import (
-                create_itensor_mps_parametric_estimator,
-            )
-
-            estimator = create_itensor_mps_parametric_estimator
-        return estimator
-
     def kernel(self, h1, h2, norb, nelec, ecore=0, **kwargs):
         self.n_orbitals = norb
         self.n_qubit = self.fermion_qubit_mapping.n_qubits_required(2 * self.n_orbitals)
@@ -859,26 +831,6 @@ class ParallelVQECI(VQECI):
             )
             gs = np.sum(np.asarray([g.real for g in r.values]) for r in result)
             return gs
-            """
-            gs = 0.0
-            estimate = gradient_estimator(qubit_hamiltonians[0], param_state, params)
-            gs += np.asarray([g.real for g in estimate.values])
-            return gs
-            """
-
-        """
-        def grad_fn(params):
-            gs = 0.0
-            for qubit_hamiltonian in qubit_hamiltonians:
-                estimate = gradient_estimator(qubit_hamiltonian, param_state, params)
-                gs += np.asarray([g.real for g in estimate.values])
-            return gs
-
-        qubit_hamiltonian = op_mapper(self.fermionic_hamiltonian)
-        def grad_fn(params):
-            estimate = gradient_estimator(qubit_hamiltonian, param_state, params)
-            return np.asarray([g.real for g in estimate.values])
-        """
 
         print("----VQE-----")
 
